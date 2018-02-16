@@ -4,9 +4,16 @@
   "description": "",
   "private": true,
   "dependencies": {
+    "axios": "0.17.1",
+    "baidu-ocr": "1.0.1",
+    "baidu-ocr-api": "2.0.5",
     "egg": "^2.2.1",
     "egg-scripts": "^2.5.0",
-    "egg-view-nunjucks": "^2.1.4"
+    "egg-view-nunjucks": "^2.1.4",
+    "formstream": "1.1.0",
+    "node-xlsx": "0.11.2",
+    "querystring": "0.2.0",
+    "request-promise": "4.2.2"
   },
   "devDependencies": {
     "autod": "^3.0.1",
