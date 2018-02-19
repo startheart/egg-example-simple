@@ -14,7 +14,7 @@ var apikey = '0d3b0f02fdb03d32d567ca6dfd0593b1';
 var ocr = require('baidu-ocr-api').create(ak,sk);
 // var ocr = require('baidu-ocr').create(apikey);
 // 
-const COOKIE = 'JSESSIONID=0000fWZwmsMAEhNFm2Y11GN-SbW:-1'
+const COOKIE = 'Hm_lvt_1ab04bcaf4dd6e15edf78188f2d6a32c=1518495379; JSESSIONID=00001ZTnzHGapts-kvf5otWMxpp:-1; Hm_lpvt_1ab04bcaf4dd6e15edf78188f2d6a32c=1519051754'
 
 
 var request = require('request-promise');
