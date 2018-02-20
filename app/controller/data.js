@@ -14,7 +14,7 @@ var apikey = '0d3b0f02fdb03d32d567ca6dfd0593b1';
 var ocr = require('baidu-ocr-api').create(ak,sk);
 // var ocr = require('baidu-ocr').create(apikey);
 // 
-const COOKIE = 'Hm_lvt_1ab04bcaf4dd6e15edf78188f2d6a32c=1518495379; JSESSIONID=00001ZTnzHGapts-kvf5otWMxpp:-1; Hm_lpvt_1ab04bcaf4dd6e15edf78188f2d6a32c=1519051754'
+let COOKIE = 'Hm_lvt_1ab04bcaf4dd6e15edf78188f2d6a32c=1518495379; JSESSIONID=00001ZTnzHGapts-kvf5otWMxpp:-1; Hm_lpvt_1ab04bcaf4dd6e15edf78188f2d6a32c=1519051754'
 
 
 var request = require('request-promise');
@@ -56,6 +56,10 @@ class DataController extends Controller {
     // const result = await request(options)
     const result = await axios.get(url, config)
     
+    if (result.headers["set-cookie"] && result.headers["set-cookie"][0]) {
+      this.updateCookie(result.headers["set-cookie"][0])
+    }
+
     const base64Str = result.data.base64Slice()
 
     // await this.regImage()
@@ -65,6 +69,10 @@ class DataController extends Controller {
     ctx.body = {
       base64Str
     };
+  }
+
+  updateCookie(cookie) {
+    COOKIE = cookie
   }
 
   async getListAndShow() {
