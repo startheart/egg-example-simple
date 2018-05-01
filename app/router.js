@@ -23,5 +23,6 @@ module.exports = app => {
   router.get('/getExcelData', 'data.getExcelData');
   router.get('/writeInExcel', 'data.writeInExcel');
   router.get('/download', 'data.download');
+  router.get('/patentSearch', 'patentSearch.home');
 };
 
