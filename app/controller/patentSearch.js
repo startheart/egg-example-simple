@@ -1,10 +1,35 @@
+const fs = require('fs');
+const path = require('path');
+const axios = require('axios');
+const querystring = require('querystring');
+const xlsx = require('node-xlsx');
+
 const Controller = require('egg').Controller;
 
-const POST_URL = 'http://epub.sipo.gov.cn/patentoutline.action'
+const HOST = 'http://epub.sipo.gov.cn'
 
-const COOKIE = `WEB=20111130; Hm_lvt_06635991e58cd892f536626ef17b3348=1525065503; _gscu_7281245=25065502xm2iz720; _gscbrs_7281245=1; TY_SESSION_ID=6c6916a5-2b57-49df-8ea8-98ae96c4448e; preurl=/patentoutline.action; JSESSIONID=DAE8C6CDD50FE0A07FC3E50B0495F7A0; captchaKey=5d3329890e; captchaExpire=1525194289; keycookie=a0ab6d9062; expirecookie=1525194334; Hm_lpvt_06635991e58cd892f536626ef17b3348=1525195403; _gscs_7281245=t25194380e6eu2i14|pv:5; captchaNum=7753`
+const POST_URL = HOST + '/patentoutline.action'
 
-var sleep = function (time) {
+let COOKIE = `WEB=20111130; _gscu_7281245=25065502xm2iz720; _gscbrs_7281245=1; TY_SESSION_ID=6c6916a5-2b57-49df-8ea8-98ae96c4448e; Hm_lvt_06635991e58cd892f536626ef17b3348=1525065503,1525517686,1525518553,1525518598; preurl=/patentoutline.action; JSESSIONID=0C890F1E9B3972872879F324C2723149; captchaNum=4547; captchaKey=b2b95c1b2e; captchaExpire=1525537347; keycookie=93a65b625d; expirecookie=1525537874; Hm_lpvt_06635991e58cd892f536626ef17b3348=1525539454; _gscs_7281245=t25538214ax7z2n10|pv:15`
+
+const OUTPUT_DIR_PATH = path.join(__dirname, '../public')
+
+const sheetSrc = {
+	'pip': '发明公布',
+	'pig': '发明授权'
+}
+
+const sheetMap =  {
+	'发明公布': 'pip',
+	'发明授权': 'pig'
+}
+
+const curPageCache = {
+	'pip': 1,
+	'pig': 1
+}
+
+let sleep = function (time) {
     return new Promise(function (resolve, reject) {
         setTimeout(function () {
             // 模拟出错了，返回 ‘error’
@@ -25,42 +50,77 @@ class PatentSearchController extends Controller {
   	const numSortMethod = 4
 	const pageSize  = 10
 	const pageNow = 1
-	const strSources = 'pip' //发明公布、pig 发明授权
+	const strSources = ['pig', 'pip'] //发明公布、pig 发明授权
 
-	let maxPage = 0
-	debugger
-	try {
-		maxPage = await this.getMaxPage({
+	this.excelPath = this.checkExcelFile()
+	this.pageSize = pageSize
+
+	let resolve
+	for (let i in strSources) {
+		debugger
+		this.curSheetSrc = strSources[i]
+		resolve = await this.process({
 			strWhere,
 			showType,
 			numSortMethod,
 			pageSize,
 			pageNow,
-			strSources
+			strSources: this.curSheetSrc
 		})
+	}
+
+	ctx.body = resolve
+  }
+
+  updateCurPageNum() {
+  	const workSheetsFromFile = xlsx.parse(this.excelPath);
+
+  	this.workSheets = []
+  	workSheetsFromFile.forEach((item, index) => {
+  		let name = item.name
+  		let source = sheetMap[name]
+
+  		let data = item.data
+  		
+  		if (source === this.curSheetSrc) {
+  			this.curSheet = {
+  				name,
+  				data
+  			}
+  			curPageCache[source] = data.length / this.pageSize
+  		} else {
+  			this.workSheets.push(item)
+  		}
+  	})
+
+  }
+
+  async process(formData) {
+  	this.updateCurPageNum()
+
+  	let maxPage = 0
+	
+	try {
+		maxPage = await this.getMaxPage(formData)
 	} catch (err) {
-		return ctx.body = err.message
+		return this.ctx.body = err.message
 	}
 
 	let dataAll = []
 
-	for (let i = 1; i < maxPage; i++) {
-		const formData = {
-			strWhere,
-			showType,
-			numSortMethod,
-			pageSize,
-			pageNow: i,
-			strSources
+	for (let i = curPageCache[this.curSheetSrc]; i < maxPage; i++) {
+		const data = {
+			...formData,
+			pageNow: i
 		}
 		// 沉睡3秒
-		await sleep(3000)
-		const curPageData = await this.getCurPageData(formData)
+		// await sleep(3000)
+		const curPageData = await this.getCurPageData(data)
+
 		dataAll = dataAll.concat(curPageData)
 	}
 
-	debugger
-	ctx.body = dataAll
+	return dataAll
   }
 
   // 获取全部有效匹配信息
@@ -75,29 +135,45 @@ class PatentSearchController extends Controller {
 	  let str = mat[1]
 	  let res = {}
 
-	  const regH1 = /<h1>\s*(\S*)<\/h1>/g;
-	  const regAnnNum = /<li class="wl228">申请公布号：(.*)<\/li>/
-	  const regAnnDate = /<li class="wl228">申请公布日：(.*)<\/li>/
-	  const regApplyNum = /<li class="wl228">申请号：(.*)<\/li>/
-	  const regApplyDate = /<li class="wl228">申请日：(.*)<\/li>/
-	  const regApplicant = /<li class="wl228">申请人：(.*)<\/li>/
-	  const regInventor = /<li class="wl228">发明人：(.*)<\/li>/
-	  const regAddr = /<li>地址：(.*)<\/li>/
+	  const regH1 = /<h1>\s*(\S*?)<\/h1>/g;
+	  const regAnnNum = /<li class="wl228">申请公布号：([\s\S]*?)<\/li>/
+	  const regAnnDate = /<li class="wl228">申请公布日：([\s\S]*?)<\/li>/
+	  const regApplyNum = /<li class="wl228">申请号：([\s\S]*?)<\/li>/
+	  const regApplyDate = /<li class="wl228">申请日：([\s\S]*?)<\/li>/
+	  const regApplicant = /<li class="wl228">申请人：([\s\S]*?)<\/li>/
+	  const regInventor = /<li class="wl228">发明人：([\s\S]*?)<\/li>/
+	  const regAddr = /<li>地址：([\s\S]*?)<\/li>/
 	  const regClfNum = /<li>分类号：([\s\S]*?)<\/ul>/
 	  const regSum = /<span id="tit">\s*摘要：\s*<\/span>(?:\s*)([\s\S]*?)(?:<\/)/g
 
 	  res.h1 = this.getExContent(str, regH1)
+	  				.replace(/&nbsp;/g, '')
 	  res.annNum = this.getExContent(str, regAnnNum)
 	  res.annDate = this.getExContent(str, regAnnDate)
 	  res.applyNum = this.getExContent(str, regApplyNum)
 	  res.applyDate = this.getExContent(str, regApplyDate)
 	  res.applicant = this.getExContent(str, regApplicant)
+	  					.replace(/&ensp;/g, '')
+	  					.replace(/<a[\s\S]*<div style="display:none;">/g, '')
+	  					.replace('<\/div>', '')
 	  res.inventor = this.getExContent(str, regInventor)
+	  					.replace(/&ensp;/g, '')
+	  					.replace(/<a[\s\S]*<div style="display:none;">/g, '')
+	  					.replace('<\/div>', '')
 	  res.addr = this.getExContent(str, regAddr)
 	  res.clfNum = this.getExContent(str, regClfNum)
+	  					.replace(/&ensp;/g, '')
+	  					.replace(/&nbsp;/g, '')
+	  					.replace(/<a[\s\S]*<div style="display:none;">/g, '')
+	  					.replace(/<li>/g, '')
+	  					.replace(/<ul>/g, '')
+	  					.replace(/<\/li>/g, '')
 	  res.sum = this.getExContent(str, regSum)
+	  					.replace('<span style="display:none;">', '')
 
 	  dataArr.push(res)
+
+	  this.writeToExcel(this.excelPath, res)
 	}
 
 	return dataArr
@@ -106,6 +182,7 @@ class PatentSearchController extends Controller {
 
   // 获取最大页数
   async getMaxPage(formData) {
+  	debugger
   	const html = await this.post(formData)
 
   	const maxReg = /zl_tz\((.*)\)/i;
@@ -115,28 +192,46 @@ class PatentSearchController extends Controller {
   	if (maxPage) {
   		return parseInt(maxPage)
   	} else {
-  		const errStr = html.replace('/get-captcha.jpg', 'http://epub.sipo.gov.cn/get-captcha.jpg')
-  		throw new Error(errStr)
+ 		debugger
+  		// 处理验证码逻辑
+		this.codeCheck()
+
+		const errStr = html.replace('/get-captcha.jpg', HOST + '/get-captcha.jpg')
+							.replace('/verify-captcha.jpg', HOST + '/verify-captcha.jpg')
+		throw new Error(errStr)
   	}
+  }
+
+  codeCheck() {
+
   }
 
   // post 请求
   async post(formData) {
     const ctx = this.ctx;
+    const url = POST_URL
+    const options = {
+      // 必须指定 method
+      method: 'POST',
+      // 通过 contentType 告诉 httpclient 以 JSON 格式发送
+      contentType: 'application/x-www-form-urlencoded',
+      headers: {
+        cookie: COOKIE
+      },
+      data: formData,
+      // 明确告诉 httpclient 以 JSON 格式处理响应 body
+      dataType: 'text',
+    }
+
+    const config = {
+      headers: {
+        'cookie': COOKIE
+      },
+      timeout: 60*1000*10 //请求超时时间10min
+    }
 
     try {
-	    const result = await ctx.curl(POST_URL, {
-	      // 必须指定 method
-	      method: 'POST',
-	      // 通过 contentType 告诉 httpclient 以 JSON 格式发送
-	      contentType: 'application/x-www-form-urlencoded',
-	      headers: {
-	        cookie: COOKIE
-	      },
-	      data: formData,
-	      // 明确告诉 httpclient 以 JSON 格式处理响应 body
-	      dataType: 'text',
-	    });
+	    const result = await axios.post(url, querystring.stringify(formData), config);
 	    return result.data;
 	} catch (e) {
 		console.error(`ctx.curl(${POST_URL}) error`, e)
@@ -150,6 +245,123 @@ class PatentSearchController extends Controller {
   		return RegExp.$1
   	}
   	return ''
+  }
+
+  checkExcelFile() {
+  	const ctx = this.ctx
+  	const query = ctx.query
+  	const strSearch = query.strSearch
+
+  	const pth = path.join(OUTPUT_DIR_PATH, `${strSearch}.xlsx`)
+
+  	try {
+  		const res = fs.readFileSync(pth)
+  	} catch (e) {
+  		debugger
+  		this.createExcel(pth)
+  	}
+  	return pth
+  }
+
+  /**
+   * [createExcel description]
+   * @return {pth} 返回excel表格地址
+   */
+  createExcel(filePath) {
+
+  	const data = [
+  		['专利标题', '申请公布号', '申请公布日', '申请号', '申请日', '申请人', '发明人', '地址', '分类号', '摘要']
+  	]
+
+  	const buffer = xlsx.build([
+	  	{name: sheetSrc['pip'], data: data},
+	  	{name: sheetSrc['pig'], data: data}
+  	]); // Returns a buffer
+
+  	fs.writeFileSync(filePath, buffer, {'flag':'w'})
+
+  }
+
+  writeToExcel(path, colData) {
+  	debugger
+    let sheetName
+    let sheetData
+
+    if (!this.curSheet || this.curSheet.length == 0) {
+    	sheetName = sheetSrc[this.curSheetSrc]
+    	sheetData = [
+    		['专利标题', '申请公布号', '申请公布日', '申请号', '申请日', '申请人', '发明人', '地址', '分类号', '摘要']
+    	]
+    } else {
+    	sheetName = this.curSheet.name
+    	sheetData = this.curSheet.data
+    }
+
+    const rowCount = sheetData.length - 1
+
+    // 第一行数据为表头
+    const firstRowData = sheetData[0]
+
+    // 获取 申请公布号 column id 索引
+    const annDateIdx = firstRowData.indexOf('申请公布号');
+
+    let flag = true
+    for(let rIdx = 0; rIdx < rowCount; rIdx++) {
+      
+      let rowData = sheetData[rIdx]
+      let annDate = rowData[annDateIdx]
+
+      if (annDate !== colData['annDate']) {
+      	continue
+      } else {
+      	flag = false
+      	break
+      }
+    }
+
+    // ['专利标题', '申请公布号', '申请公布日', '申请号', '申请日', '申请人', '发明人', '地址', '分类号', '摘要']
+    if (flag) {
+    	// 插入数据
+    	sheetData.push([
+    		colData['h1'],
+    		colData['annNum'],
+    		colData['annDate'],
+    		colData['applyNum'],
+    		colData['applyDate'],
+    		colData['applicant'],
+    		colData['inventor'],
+    		colData['addr'],
+    		colData['clfNum'],
+    		colData['sum']
+    	])
+
+    	this.writeSync(path, {
+	    	sheetData,
+	    	sheetName
+	    })
+    }
+
+    return {
+    	sheetData,
+    	sheetName
+    }
+  }
+
+  writeSync(filePath, data) {
+  	const buffer = xlsx.build([
+  	  ...this.workSheets,
+      {
+          name: data.sheetName,
+          data: data.sheetData
+      }        
+    ]);
+
+    //将文件内容插入新的文件中
+    fs.writeFileSync(filePath, buffer, {'flag':'w'});
+  }
+
+  updateCookie() {
+
   }
 }
 
