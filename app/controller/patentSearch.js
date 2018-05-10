@@ -14,7 +14,7 @@ let COOKIE = `WEB=20111130; _gscu_7281245=25065502xm2iz720; _gscbrs_7281245=1; T
 
 const OUTPUT_DIR_PATH = path.join(__dirname, '../public')
 
-const sheetSrc = {
+const sheetNameSet = {
 	'pip': '发明公布',
 	'pig': '发明授权'
 }
@@ -24,9 +24,10 @@ const sheetMap =  {
 	'发明授权': 'pig'
 }
 
-const curPageCache = {
-	'pip': 1,
-	'pig': 1
+const sheetHead = {
+	'pip': ['专利标题', '申请公布号', '申请公布日', '申请号', '申请日', '申请人', '发明人', '地址', '分类号', '摘要'],
+	// 发明授权
+	'pig': ['专利标题', '授权公告号', '申请公布日', '申请号', '申请日', '专利权人', '发明人', '地址', '分类号', '摘要', '授权公告日', '同一申请的已公布的文献号'] 
 }
 
 let sleep = function (time) {
@@ -43,23 +44,55 @@ class PatentSearchController extends Controller {
   async home() {
   	const ctx = this.ctx;
   	const query = ctx.query
-  	const strSearch = query.strSearch
+
+  	let searchList = ['区块链', '人工智能', '大数据', '云计算', '移动支付', '互联网保险', '供应链金融', '网络借贷', '股权众筹', '智能投顾', '大数据征信']
+
+  	this.curPageCache = {
+		'pip': 1,
+		'pig': 1
+	}
+  	await this.mainProcessNext(searchList)
+  }
+
+  async mainProcessNext(searchList) {
+  	const ctx = this.ctx
+  	const strSearch = this.strSearch = searchList.shift()
+
+  	if (!strSearch) {
+  		return
+  	}
 
   	const strWhere = `PA,IN,AGC,AGT+='%` + strSearch + `%' or PAA,TI,ABH+='` + strSearch + `'`
   	const showType = 1
   	const numSortMethod = 4
 	const pageSize  = 10
 	const pageNow = 1
-	const strSources = ['pig', 'pip'] //发明公布、pig 发明授权
+	const strSources = ['pip', 'pig'] //发明公布、pig 发明授权
 
-	this.excelPath = this.checkExcelFile()
 	this.pageSize = pageSize
 
-	let resolve
-	for (let i in strSources) {
-		debugger
-		this.curSheetSrc = strSources[i]
-		resolve = await this.process({
+  	this.excelPath = this.checkExcelFile()
+  	this.dataAll = []
+
+  	try {
+		let resolve = []
+		// for (let i in strSources) {
+		// 	
+		// 	this.curSheetSrc = strSources[i]
+		// 	resolve = await this.process({
+		// 		strWhere,
+		// 		showType,
+		// 		numSortMethod,
+		// 		pageSize,
+		// 		pageNow,
+		// 		strSources: this.curSheetSrc
+		// 	})
+		// }
+		
+		this.curSheetSrc = strSources[0]
+		this.isAuthType = this.curSheetSrc === sheetMap['发明授权']
+
+		resolve[0] = await this.process({
 			strWhere,
 			showType,
 			numSortMethod,
@@ -67,9 +100,25 @@ class PatentSearchController extends Controller {
 			pageNow,
 			strSources: this.curSheetSrc
 		})
+
+		this.curSheetSrc = strSources[1]
+		this.isAuthType = this.curSheetSrc === sheetMap['发明授权']
+
+		resolve[1] = await this.process({
+			strWhere,
+			showType,
+			numSortMethod,
+			pageSize,
+			pageNow,
+			strSources: this.curSheetSrc
+		})
+
+		ctx.body = resolve
+	} catch (err) {
+		return ctx.body = err.message
 	}
 
-	ctx.body = resolve
+	await this.mainProcessNext(searchList)
   }
 
   updateCurPageNum() {
@@ -87,7 +136,7 @@ class PatentSearchController extends Controller {
   				name,
   				data
   			}
-  			curPageCache[source] = data.length / this.pageSize
+  			this.curPageCache[source] = Math.floor(data.length / this.pageSize)
   		} else {
   			this.workSheets.push(item)
   		}
@@ -103,24 +152,33 @@ class PatentSearchController extends Controller {
 	try {
 		maxPage = await this.getMaxPage(formData)
 	} catch (err) {
-		return this.ctx.body = err.message
+		throw new Error(err.message)
 	}
 
 	let dataAll = []
 
-	for (let i = curPageCache[this.curSheetSrc]; i < maxPage; i++) {
-		const data = {
-			...formData,
-			pageNow: i
-		}
-		// 沉睡3秒
-		// await sleep(3000)
-		const curPageData = await this.getCurPageData(data)
-
-		dataAll = dataAll.concat(curPageData)
+	const data = {
+		...formData,
+		pageNow: this.curPageCache[this.curSheetSrc]
 	}
+	
+	await this.processNext(data, maxPage)
+	
+  }
 
-	return dataAll
+  async processNext(data, maxPage) {
+
+  	if (data.pageNow > maxPage) {
+  		return null
+  	} else {
+  		const curPageData = await this.getCurPageData(data)
+  		this.dataAll.concat(curPageData)
+
+  		data.pageNow++
+
+  		await sleep(1000)
+  		await this.processNext(data, maxPage)
+  	}
   }
 
   // 获取全部有效匹配信息
@@ -136,15 +194,34 @@ class PatentSearchController extends Controller {
 	  let res = {}
 
 	  const regH1 = /<h1>\s*(\S*?)<\/h1>/g;
-	  const regAnnNum = /<li class="wl228">申请公布号：([\s\S]*?)<\/li>/
+
+	  const regAnnNum = !this.isAuthType
+	  				    ? /<li class="wl228">申请公布号：([\s\S]*?)<\/li>/
+	  				    : /<li class="wl228">授权公告号：([\s\S]*?)<\/li>/
+
 	  const regAnnDate = /<li class="wl228">申请公布日：([\s\S]*?)<\/li>/
+
 	  const regApplyNum = /<li class="wl228">申请号：([\s\S]*?)<\/li>/
+
 	  const regApplyDate = /<li class="wl228">申请日：([\s\S]*?)<\/li>/
-	  const regApplicant = /<li class="wl228">申请人：([\s\S]*?)<\/li>/
+
+	  const regApplicant = !this.isAuthType
+	  				    ? /<li class="wl228">申请人：([\s\S]*?)<\/li>/
+	  				    : /<li class="wl228">专利权人：([\s\S]*?)<\/li>/
+
 	  const regInventor = /<li class="wl228">发明人：([\s\S]*?)<\/li>/
 	  const regAddr = /<li>地址：([\s\S]*?)<\/li>/
 	  const regClfNum = /<li>分类号：([\s\S]*?)<\/ul>/
 	  const regSum = /<span id="tit">\s*摘要：\s*<\/span>(?:\s*)([\s\S]*?)(?:<\/)/g
+
+
+	  if(this.isAuthType) {
+	  	const regAuthDate = /<li class="wl228">授权公告日：([\s\S]*?)<\/li>/
+	  	const regOtherApply = /<li class="wl228">同一申请的已公布的文献号：([\s\S]*?)<\/li>/
+
+	  	res.authDate = this.getExContent(str, regAuthDate)
+	  	res.otherApply = this.getExContent(str, regOtherApply)
+	  }
 
 	  res.h1 = this.getExContent(str, regH1)
 	  				.replace(/&nbsp;/g, '')
@@ -171,6 +248,8 @@ class PatentSearchController extends Controller {
 	  res.sum = this.getExContent(str, regSum)
 	  					.replace('<span style="display:none;">', '')
 
+	  
+
 	  dataArr.push(res)
 
 	  this.writeToExcel(this.excelPath, res)
@@ -182,7 +261,7 @@ class PatentSearchController extends Controller {
 
   // 获取最大页数
   async getMaxPage(formData) {
-  	debugger
+  	
   	const html = await this.post(formData)
 
   	const maxReg = /zl_tz\((.*)\)/i;
@@ -192,7 +271,7 @@ class PatentSearchController extends Controller {
   	if (maxPage) {
   		return parseInt(maxPage)
   	} else {
- 		debugger
+ 		
   		// 处理验证码逻辑
 		this.codeCheck()
 
@@ -250,14 +329,14 @@ class PatentSearchController extends Controller {
   checkExcelFile() {
   	const ctx = this.ctx
   	const query = ctx.query
-  	const strSearch = query.strSearch
+  	const strSearch = this.strSearch
 
   	const pth = path.join(OUTPUT_DIR_PATH, `${strSearch}.xlsx`)
 
   	try {
   		const res = fs.readFileSync(pth)
   	} catch (e) {
-  		debugger
+  		
   		this.createExcel(pth)
   	}
   	return pth
@@ -269,13 +348,9 @@ class PatentSearchController extends Controller {
    */
   createExcel(filePath) {
 
-  	const data = [
-  		['专利标题', '申请公布号', '申请公布日', '申请号', '申请日', '申请人', '发明人', '地址', '分类号', '摘要']
-  	]
-
   	const buffer = xlsx.build([
-	  	{name: sheetSrc['pip'], data: data},
-	  	{name: sheetSrc['pig'], data: data}
+	  	{name: sheetNameSet['pip'], data: [sheetHead['pip']]},
+	  	{name: sheetNameSet['pig'], data: [sheetHead['pig']]}
   	]); // Returns a buffer
 
   	fs.writeFileSync(filePath, buffer, {'flag':'w'})
@@ -283,14 +358,14 @@ class PatentSearchController extends Controller {
   }
 
   writeToExcel(path, colData) {
-  	debugger
+
     let sheetName
     let sheetData
 
     if (!this.curSheet || this.curSheet.length == 0) {
-    	sheetName = sheetSrc[this.curSheetSrc]
+    	sheetName = sheetNameSet[this.curSheetSrc]
     	sheetData = [
-    		['专利标题', '申请公布号', '申请公布日', '申请号', '申请日', '申请人', '发明人', '地址', '分类号', '摘要']
+    		sheetHead[this.curSheetSrc]
     	]
     } else {
     	sheetName = this.curSheet.name
@@ -302,16 +377,16 @@ class PatentSearchController extends Controller {
     // 第一行数据为表头
     const firstRowData = sheetData[0]
 
-    // 获取 申请公布号 column id 索引
-    const annDateIdx = firstRowData.indexOf('申请公布号');
+    // 获取 申请号 column id 索引
+    const applyNumIdx = firstRowData.indexOf('申请号');
 
     let flag = true
     for(let rIdx = 0; rIdx < rowCount; rIdx++) {
       
       let rowData = sheetData[rIdx]
-      let annDate = rowData[annDateIdx]
-
-      if (annDate !== colData['annDate']) {
+      let applyNum = rowData[applyNumIdx]
+      debugger
+      if (applyNum != colData['applyNum']) {
       	continue
       } else {
       	flag = false
@@ -322,7 +397,7 @@ class PatentSearchController extends Controller {
     // ['专利标题', '申请公布号', '申请公布日', '申请号', '申请日', '申请人', '发明人', '地址', '分类号', '摘要']
     if (flag) {
     	// 插入数据
-    	sheetData.push([
+    	let data = [
     		colData['h1'],
     		colData['annNum'],
     		colData['annDate'],
@@ -333,7 +408,14 @@ class PatentSearchController extends Controller {
     		colData['addr'],
     		colData['clfNum'],
     		colData['sum']
-    	])
+    	]
+
+    	if (this.isAuthType) {
+    		data.push(colData['authDate'])
+    		data.push(colData['otherApply'])
+    	}
+
+    	sheetData.push(data)
 
     	this.writeSync(path, {
 	    	sheetData,
