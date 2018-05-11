@@ -27,7 +27,7 @@ const sheetMap =  {
 const sheetHead = {
 	'pip': ['专利标题', '申请公布号', '申请公布日', '申请号', '申请日', '申请人', '发明人', '地址', '分类号', '摘要'],
 	// 发明授权
-	'pig': ['专利标题', '授权公告号', '申请公布日', '申请号', '申请日', '专利权人', '发明人', '地址', '分类号', '摘要', '授权公告日', '同一申请的已公布的文献号'] 
+	'pig': ['专利标题', '授权公告号', '申请公布日', '申请号', '申请日', '专利权人', '发明人', '地址', '分类号', '摘要', '授权公告日', '同一申请的已公布的文献号']
 }
 
 let sleep = function (time) {
@@ -44,7 +44,7 @@ class PatentSearchController {
   async home() {
   	const ctx = this.ctx;
 
-  	let searchList = ['人工智能', '大数据', '云计算', '移动支付', '互联网保险', '供应链金融', '网络借贷', '股权众筹', '智能投顾', '大数据征信', '区块链']
+  	let searchList = ['互联网保险', '供应链金融', '网络借贷', '股权众筹', '智能投顾', '大数据征信', '区块链', '人工智能', '大数据', '云计算', '移动支付']
 
   	this.curPageCache = {
 		'pip': 1,
@@ -76,7 +76,7 @@ class PatentSearchController {
   	try {
 		let resolve = []
 		// for (let i in strSources) {
-		// 	
+		//
 		// 	this.curSheetSrc = strSources[i]
 		// 	resolve = await this.process({
 		// 		strWhere,
@@ -87,7 +87,7 @@ class PatentSearchController {
 		// 		strSources: this.curSheetSrc
 		// 	})
 		// }
-		
+
 		this.curSheetSrc = strSources[0]
 		this.isAuthType = this.curSheetSrc === 'pig'
 
@@ -130,7 +130,7 @@ class PatentSearchController {
   		let source = sheetMap[name]
 
   		let data = item.data
-  		
+
   		if (source === this.curSheetSrc) {
   			this.curSheet = {
   				name,
@@ -148,7 +148,7 @@ class PatentSearchController {
   	this.updateCurPageNum()
 
   	let maxPage = 0
-	
+
   	try {
   		maxPage = await this.getMaxPage(formData)
   	} catch (err) {
@@ -161,9 +161,9 @@ class PatentSearchController {
   		...formData,
   		pageNow: this.curPageCache[this.curSheetSrc]
   	}
-  	
+
   	await this.processNext(data, maxPage)
-	
+
   }
 
   async processNext(data, maxPage) {
@@ -248,7 +248,7 @@ class PatentSearchController {
 	  res.sum = this.getExContent(str, regSum)
 	  					.replace('<span style="display:none;">', '')
 
-	  
+
 
 	  dataArr.push(res)
 
@@ -261,7 +261,7 @@ class PatentSearchController {
 
   // 获取最大页数
   async getMaxPage(formData) {
-  	
+
   	const html = await this.post(formData)
 
   	const maxReg = /zl_tz\((.*)\)/i;
@@ -271,7 +271,7 @@ class PatentSearchController {
   	if (maxPage) {
   		return parseInt(maxPage)
   	} else {
- 		
+
   		// 处理验证码逻辑
 		this.codeCheck()
 
@@ -335,7 +335,7 @@ class PatentSearchController {
   	try {
   		const res = fs.readFileSync(pth)
   	} catch (e) {
-  		
+
   		this.createExcel(pth)
   	}
   	return pth
@@ -381,10 +381,10 @@ class PatentSearchController {
 
     let flag = true
     for(let rIdx = 0; rIdx < rowCount; rIdx++) {
-      
+
       let rowData = sheetData[rIdx]
       let applyNum = rowData[applyNumIdx]
-      
+
       if (applyNum != colData['applyNum']) {
       	continue
       } else {
@@ -434,7 +434,7 @@ class PatentSearchController {
       {
           name: data.sheetName,
           data: data.sheetData
-      }        
+      }
     ]);
 
     //将文件内容插入新的文件中
