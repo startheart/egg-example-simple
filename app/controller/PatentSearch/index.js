@@ -44,7 +44,7 @@ class PatentSearchController {
   async home() {
   	const ctx = this.ctx;
 
-  	let searchList = ['区块链', '人工智能', '大数据', '云计算', '移动支付', '互联网保险', '供应链金融', '网络借贷', '股权众筹', '智能投顾', '大数据征信']
+  	let searchList = ['人工智能', '大数据', '云计算', '移动支付', '互联网保险', '供应链金融', '网络借贷', '股权众筹', '智能投顾', '大数据征信', '区块链']
 
   	this.curPageCache = {
 		'pip': 1,
@@ -89,7 +89,7 @@ class PatentSearchController {
 		// }
 		
 		this.curSheetSrc = strSources[0]
-		this.isAuthType = this.curSheetSrc === sheetMap['发明公布']
+		this.isAuthType = this.curSheetSrc === 'pig'
 
 		resolve[0] = await this.process({
 			strWhere,
@@ -101,7 +101,7 @@ class PatentSearchController {
 		})
 
 		this.curSheetSrc = strSources[1]
-		this.isAuthType = this.curSheetSrc === sheetMap['发明授权']
+		this.isAuthType = this.curSheetSrc === 'pig'
 
 		resolve[1] = await this.process({
 			strWhere,
@@ -176,7 +176,7 @@ class PatentSearchController {
 
   		data.pageNow++
 
-  		await sleep(1000)
+  		// await sleep(1000)
   		await this.processNext(data, maxPage)
   	}
   }

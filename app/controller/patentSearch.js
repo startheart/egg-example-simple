@@ -90,7 +90,7 @@ class PatentSearchController extends Controller {
 		// }
 		
 		this.curSheetSrc = strSources[0]
-		this.isAuthType = this.curSheetSrc === sheetMap['发明授权']
+		this.isAuthType = this.curSheetSrc === 'pig'
 
 		resolve[0] = await this.process({
 			strWhere,
@@ -102,7 +102,7 @@ class PatentSearchController extends Controller {
 		})
 
 		this.curSheetSrc = strSources[1]
-		this.isAuthType = this.curSheetSrc === sheetMap['发明授权']
+		this.isAuthType = this.curSheetSrc === 'pig'
 
 		resolve[1] = await this.process({
 			strWhere,
