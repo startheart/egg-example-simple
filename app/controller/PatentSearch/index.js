@@ -10,7 +10,7 @@ const HOST = 'http://epub.sipo.gov.cn'
 
 const POST_URL = HOST + '/patentoutline.action'
 
-let COOKIE = `WEB=20111130; _gscu_7281245=25065502xm2iz720; _gscbrs_7281245=1; TY_SESSION_ID=6c6916a5-2b57-49df-8ea8-98ae96c4448e; Hm_lvt_06635991e58cd892f536626ef17b3348=1525065503,1525517686,1525518553,1525518598; preurl=/patentoutline.action; JSESSIONID=0C890F1E9B3972872879F324C2723149; captchaNum=4547; captchaKey=b2b95c1b2e; captchaExpire=1525537347; keycookie=93a65b625d; expirecookie=1525537874; Hm_lpvt_06635991e58cd892f536626ef17b3348=1525539454; _gscs_7281245=t25538214ax7z2n10|pv:15`
+let COOKIE = `WEB=20111130; Hm_lvt_06635991e58cd892f536626ef17b3348=1526057105; _gscu_7281245=26057105td1e7317; _gscbrs_7281245=1; TY_SESSION_ID=5bcffcc5-e87a-434b-806a-a42d45fcd21a; preurl=/patentoutline.action; captchaNum=6749; captchaKey=2f5eb8ba77; captchaExpire=1526097724; JSESSIONID=6B34D69FB13E5FC9CF8B2FEEA0975838; keycookie=; Hm_lpvt_06635991e58cd892f536626ef17b3348=1526131518; _gscs_7281245=t26131475ysliso17|pv:2`
 
 const OUTPUT_DIR_PATH = path.join(__dirname, '../../public')
 
@@ -44,7 +44,7 @@ class PatentSearchController {
   async home() {
   	const ctx = this.ctx;
 
-  	let searchList = ['互联网保险', '供应链金融', '网络借贷', '股权众筹', '智能投顾', '大数据征信', '区块链', '人工智能', '大数据', '云计算', '移动支付']
+  	let searchList = ['云计算', '移动支付', '大数据', '互联网保险', '供应链金融', '网络借贷', '股权众筹', '智能投顾', '大数据征信', '区块链', '人工智能']
 
   	this.curPageCache = {
 		'pip': 1,
@@ -136,7 +136,8 @@ class PatentSearchController {
   				name,
   				data
   			}
-  			this.curPageCache[source] = Math.floor(data.length / this.pageSize)
+        let pageCache = Math.floor(data.length / this.pageSize)
+  			this.curPageCache[source] = pageCache ? pageCache : 1
   		} else {
   			this.workSheets.push(item)
   		}
@@ -167,7 +168,7 @@ class PatentSearchController {
   }
 
   async processNext(data, maxPage) {
-
+    debugger
   	if (data.pageNow > maxPage) {
   		return null
   	} else {
@@ -263,7 +264,7 @@ class PatentSearchController {
   async getMaxPage(formData) {
 
   	const html = await this.post(formData)
-
+    debugger
   	const maxReg = /zl_tz\((.*)\)/i;
 
   	const maxPage = this.getExContent(html, maxReg)
@@ -271,13 +272,16 @@ class PatentSearchController {
   	if (maxPage) {
   		return parseInt(maxPage)
   	} else {
+      if (/get-captcha\.jpg/.test(html)) {
+        // 处理验证码逻辑
+        this.codeCheck()
 
-  		// 处理验证码逻辑
-		this.codeCheck()
-
-		const errStr = html.replace('/get-captcha.jpg', HOST + '/get-captcha.jpg')
-							.replace('/verify-captcha.jpg', HOST + '/verify-captcha.jpg')
-		throw new Error(errStr)
+        const errStr = html.replace('/get-captcha.jpg', HOST + '/get-captcha.jpg')
+                  .replace('/verify-captcha.jpg', HOST + '/verify-captcha.jpg')
+        throw new Error(errStr)
+      } else {
+        return 1
+      }
   	}
   }
 
